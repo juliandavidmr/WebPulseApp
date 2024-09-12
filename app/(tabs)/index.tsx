@@ -1,52 +1,123 @@
-import { Image, StyleSheet, Platform } from 'react-native';
+import {useCallback, useEffect, useState} from "react";
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
+import { StyleSheet, FlatList, Button, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { Input, InputField } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import colors from "tailwindcss/colors";
+
+type TUrl = {
+  id: string;
+  url: string;
+  status: string;
+};
+
+const generateRandomId = () => Math.random().toString(36).substring(7);
 
 export default function HomeScreen() {
+  const [urls, setUrls] = useState<TUrl[]>([]);
+  const [newUrl, setNewUrl] = useState('');
+  const [checkURLsStates, setCheckURLsStates] = useState<Record<string, boolean>>({});
+
+  // Cargar URLs guardadas
+  useEffect(() => {
+    const loadUrls = async () => {
+      try {
+        const savedUrls = await AsyncStorage.getItem('urls');
+        if (savedUrls) setUrls(JSON.parse(savedUrls));
+      } catch (error) {
+        console.error('Error al cargar URLs:', error);
+      }
+    };
+    void loadUrls();
+  }, []);
+
+  // Guardar URLs
+  const saveUrls = async (urls: TUrl[]) => {
+    try {
+      await AsyncStorage.setItem('urls', JSON.stringify(urls));
+    } catch (error) {
+      console.error('Error al guardar URLs:', error);
+    }
+  };
+
+  // Añadir una nueva URL
+  const addUrl = () => {
+    if (newUrl.trim() === '') {
+      Alert.alert('Error', 'La URL no puede estar vacía.');
+      return;
+    }
+    const updatedUrls = [...urls, {
+      id: generateRandomId(),
+      url: newUrl,
+      status: 'unknown',
+    } satisfies TUrl];
+    setUrls(updatedUrls);
+    void saveUrls(updatedUrls);
+    setNewUrl('');
+  };
+
+  // Verificar el estado de una URL usando fetch
+  const checkUrlStatus = useCallback(async (index: number) => {
+    const updatedUrls = [...urls];
+
+    try {
+      setCheckURLsStates((prev) => ({
+        ...prev,
+        [updatedUrls[index].id]: true,
+      }));
+      setUrls(updatedUrls);
+
+      const response = await fetch(updatedUrls[index].url);
+      updatedUrls[index].status = response.ok ? 'Online' : `Error ${response.status}`;
+    } catch (error) {
+      updatedUrls[index].status = 'Offline';
+    }
+
+    setCheckURLsStates((prev) => ({
+      ...prev,
+      [updatedUrls[index].id]: false,
+    }));
+
+    setUrls(updatedUrls);
+    void saveUrls(updatedUrls);
+  }, [urls]);
+
+  // Renderizar cada URL
+  const renderUrlItem = ({ item, index }: {
+    item: TUrl;
+    index: number;
+  }) => (
+    <ThemedView style={styles.urlContainer}>
+      <ThemedText>{item.url}</ThemedText>
+      {checkURLsStates[item.id] ?
+        <Spinner size="small" color={colors.gray[500]} style={{ marginBottom: 12 }} /> :
+        <ThemedText>Status: {item.status}</ThemedText>
+      }
+      <Button
+        title="Check"
+        onPress={() => checkUrlStatus(index)}
+        disabled={checkURLsStates[item.id]}
+      />
+    </ThemedView>
+  );
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({ ios: 'cmd + d', android: 'cmd + m' })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <ThemedView style={styles.container}>
+      <ThemedText style={styles.title}>WebPulse</ThemedText>
+      <Input style={styles.input} isFocused>
+        <InputField placeholder="Añadir URL" value={newUrl} onChangeText={setNewUrl} type="text" />
+      </Input>
+      <Button title="Agregar URL" onPress={addUrl} />
+      <FlatList
+        data={urls}
+        renderItem={renderUrlItem}
+        keyExtractor={_ => _.id}
+      />
+    </ThemedView>
   );
 }
 
@@ -66,5 +137,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     position: 'absolute',
+  },
+  container: {
+    flex: 1,
+    padding: 20,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  input: {
+    marginBottom: 10,
+  },
+  urlContainer: {
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 5,
+    marginTop: 12,
   },
 });
