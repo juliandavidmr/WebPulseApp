@@ -1,13 +1,13 @@
-import {useCallback, useEffect, useState} from "react";
+import { useCallback, useEffect, useState } from 'react';
 
+import colors from 'tailwindcss/colors';
 import { StyleSheet, FlatList, Button, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { Input, InputField } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
-import colors from "tailwindcss/colors";
+import { ThemedText } from '@/components/ThemedText';
+import { Input, InputField } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 
 type TUrl = {
   id: string;
@@ -20,7 +20,9 @@ const generateRandomId = () => Math.random().toString(36).substring(7);
 export default function HomeScreen() {
   const [urls, setUrls] = useState<TUrl[]>([]);
   const [newUrl, setNewUrl] = useState('');
-  const [checkURLsStates, setCheckURLsStates] = useState<Record<string, boolean>>({});
+  const [checkURLsStates, setCheckURLsStates] = useState<
+    Record<string, boolean>
+  >({});
 
   // Cargar URLs guardadas
   useEffect(() => {
@@ -50,53 +52,64 @@ export default function HomeScreen() {
       Alert.alert('Error', 'La URL no puede estar vacía.');
       return;
     }
-    const updatedUrls = [...urls, {
-      id: generateRandomId(),
-      url: newUrl,
-      status: 'unknown',
-    } satisfies TUrl];
+    const updatedUrls = [
+      ...urls,
+      {
+        id: generateRandomId(),
+        url: newUrl,
+        status: 'unknown',
+      } satisfies TUrl,
+    ];
     setUrls(updatedUrls);
     void saveUrls(updatedUrls);
     setNewUrl('');
   };
 
   // Verificar el estado de una URL usando fetch
-  const checkUrlStatus = useCallback(async (index: number) => {
-    const updatedUrls = [...urls];
+  const checkUrlStatus = useCallback(
+    async (index: number) => {
+      const updatedUrls = [...urls];
 
-    try {
+      try {
+        setCheckURLsStates((prev) => ({
+          ...prev,
+          [updatedUrls[index].id]: true,
+        }));
+        setUrls(updatedUrls);
+
+        const response = await fetch(updatedUrls[index].url);
+        updatedUrls[index].status = response.ok
+          ? 'Online'
+          : `Error ${response.status}`;
+      } catch (error) {
+        console.error('Error al verificar URL:', error);
+        updatedUrls[index].status = 'Offline';
+      }
+
       setCheckURLsStates((prev) => ({
         ...prev,
-        [updatedUrls[index].id]: true,
+        [updatedUrls[index].id]: false,
       }));
+
       setUrls(updatedUrls);
-
-      const response = await fetch(updatedUrls[index].url);
-      updatedUrls[index].status = response.ok ? 'Online' : `Error ${response.status}`;
-    } catch (error) {
-      updatedUrls[index].status = 'Offline';
-    }
-
-    setCheckURLsStates((prev) => ({
-      ...prev,
-      [updatedUrls[index].id]: false,
-    }));
-
-    setUrls(updatedUrls);
-    void saveUrls(updatedUrls);
-  }, [urls]);
+      void saveUrls(updatedUrls);
+    },
+    [urls],
+  );
 
   // Renderizar cada URL
-  const renderUrlItem = ({ item, index }: {
-    item: TUrl;
-    index: number;
-  }) => (
+  const renderUrlItem = ({ item, index }: { item: TUrl; index: number }) => (
     <ThemedView style={styles.urlContainer}>
       <ThemedText>{item.url}</ThemedText>
-      {checkURLsStates[item.id] ?
-        <Spinner size="small" color={colors.gray[500]} style={{ marginBottom: 12 }} /> :
+      {checkURLsStates[item.id] ? (
+        <Spinner
+          size="small"
+          color={colors.gray[500]}
+          style={{ marginBottom: 12 }}
+        />
+      ) : (
         <ThemedText>Status: {item.status}</ThemedText>
-      }
+      )}
       <Button
         title="Check"
         onPress={() => checkUrlStatus(index)}
@@ -109,13 +122,18 @@ export default function HomeScreen() {
     <ThemedView style={styles.container}>
       <ThemedText style={styles.title}>WebPulse</ThemedText>
       <Input style={styles.input} isFocused>
-        <InputField placeholder="Añadir URL" value={newUrl} onChangeText={setNewUrl} type="text" />
+        <InputField
+          placeholder="Añadir URL"
+          value={newUrl}
+          onChangeText={setNewUrl}
+          type="text"
+        />
       </Input>
       <Button title="Agregar URL" onPress={addUrl} />
       <FlatList
         data={urls}
         renderItem={renderUrlItem}
-        keyExtractor={_ => _.id}
+        keyExtractor={(_) => _.id}
       />
     </ThemedView>
   );
